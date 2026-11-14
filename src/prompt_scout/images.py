@@ -6,12 +6,13 @@ Cached files feed three things: image embeddings, thumbnails in chat, and the HT
 from __future__ import annotations
 
 import io
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Iterable
 
 from PIL import Image as PILImage
+
+from . import net
 
 MAX_SIDE = 640
 THUMB_SIDE = 256
@@ -20,9 +21,7 @@ Fetcher = Callable[[str], bytes]
 
 
 def http_fetch(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "prompt-scout"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return resp.read(30 * 1024 * 1024)
+    return net.get(url, timeout=60, max_bytes=30 * 1024 * 1024)
 
 
 def to_jpeg(data: bytes, max_side: int = MAX_SIDE, quality: int = 85) -> bytes:

@@ -12,9 +12,10 @@ import ast
 import hashlib
 import json
 import re
-import urllib.request
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from . import net
 
 REPO_RAW = (
     "https://raw.githubusercontent.com/YouMind-OpenLab/"
@@ -125,8 +126,7 @@ def fetch_references(dest: Path, base_url: str = REPO_RAW) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
 
     def get(name: str) -> bytes:
-        with urllib.request.urlopen(f"{base_url}/{name}", timeout=120) as resp:
-            return resp.read()
+        return net.get(f"{base_url}/{name}", timeout=120)
 
     manifest_bytes = get("manifest.json")
     (dest / "manifest.json").write_bytes(manifest_bytes)

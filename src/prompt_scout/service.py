@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import mimetypes
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import net
 from .dataset import fill_placeholders
 from .embed import Embedder
 from .images import cache_path, thumbnail, to_jpeg
@@ -38,9 +38,7 @@ def hit_to_dict(hit: Hit, number: int) -> dict:
 def read_image(path_or_url: str, max_bytes: int = 15 * 1024 * 1024) -> bytes:
     """Load an example image and normalize it to a JPEG of at most 640 px."""
     if path_or_url.startswith(("http://", "https://")):
-        req = urllib.request.Request(path_or_url, headers={"User-Agent": "prompt-scout"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = resp.read(max_bytes + 1)
+        data = net.get(path_or_url, timeout=60, max_bytes=max_bytes + 1)
     else:
         p = Path(path_or_url).expanduser()
         if not p.exists():
