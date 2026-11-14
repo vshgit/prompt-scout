@@ -3,7 +3,7 @@ from prompt_scout.dataset import fill_placeholders
 
 def test_merges_duplicates_and_skips_empty(records):
     ids = [r.id for r in records]
-    assert ids == ["1", "2", "3"]
+    assert ids == ["1", "2", "3", "5"]
     neon = next(r for r in records if r.id == "2")
     assert neon.categories == ["profile-avatar", "poster-flyer"]
 

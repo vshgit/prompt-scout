@@ -114,6 +114,12 @@ def load_records(references_dir: Path) -> list[Record]:
     return sorted(by_id.values(), key=lambda r: int(r.id) if r.id.isdigit() else r.id)
 
 
+def select(records: list[Record], categories: list[str], exclude_ids: list[str]) -> list[Record]:
+    """Keep records in any of the chosen categories, minus excluded ids."""
+    cats, excluded = set(categories), set(exclude_ids)
+    return [r for r in records if r.id not in excluded and cats.intersection(r.categories)]
+
+
 def fetch_references(dest: Path, base_url: str = REPO_RAW) -> Path:
     """Download manifest + category files from GitHub into `dest`."""
     dest.mkdir(parents=True, exist_ok=True)

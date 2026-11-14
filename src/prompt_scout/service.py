@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import mimetypes
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
 from .dataset import fill_placeholders
 from .embed import Embedder
+from .images import cache_path, thumbnail, to_jpeg
 from .index import Hit, Index
-from .llm import LLM, read_image
+from .llm import LLM
 
 PREVIEW_CHARS = 280
 
 
-def hit_to_dict(hit: Hit) -> dict:
+def hit_to_dict(hit: Hit, number: int) -> dict:
     r = hit.record
     prompt = fill_placeholders(r.prompt)
     return {
+        "n": number,
         "id": r.id,
         "title": r.title,
         "description": r.description,
@@ -24,40 +31,79 @@ def hit_to_dict(hit: Hit) -> dict:
         "source_model": r.source_model,
         "source_url": r.source_url,
         "score": round(hit.score, 4),
-        "matched_by": [m for m, v in (("meaning", hit.dense_rank), ("keywords", hit.keyword_rank)) if v],
+        "matched_by": list(hit.ranks),
     }
 
 
+def read_image(path_or_url: str, max_bytes: int = 15 * 1024 * 1024) -> bytes:
+    """Load an example image and normalize it to a JPEG of at most 640 px."""
+    if path_or_url.startswith(("http://", "https://")):
+        req = urllib.request.Request(path_or_url, headers={"User-Agent": "prompt-scout"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read(max_bytes + 1)
+    else:
+        p = Path(path_or_url).expanduser()
+        if not p.exists():
+            raise ValueError(f"File not found: {p}")
+        guessed = mimetypes.guess_type(p.name)[0] or ""
+        if guessed and not guessed.startswith("image/"):
+            raise ValueError(f"Not an image: {p.name}")
+        data = p.read_bytes()
+    if len(data) > max_bytes:
+        raise ValueError("Image is larger than 15 MB")
+    try:
+        return to_jpeg(data)
+    except Exception as exc:
+        raise ValueError(f"Could not read the image: {exc}") from exc
+
+
+@dataclass
+class SearchResult:
+    query: str
+    query_image: bytes | None
+    results: list[dict]
+    preview_path: Path | None = None
+
+
 class PromptScout:
-    def __init__(self, index: Index, embedder: Embedder, llm: LLM | None = None):
+    def __init__(self, index: Index, embedder: Embedder, llm: LLM | None = None,
+                 cache_dir: Path | None = None, results_dir: Path | None = None):
         self.index = index
         self.embedder = embedder
         self.llm = llm
+        self.cache_dir = cache_dir
+        self.results_dir = results_dir
 
-    def _need_llm(self) -> LLM:
-        if self.llm is None:
-            raise RuntimeError("This tool needs GEMINI_API_KEY (LLM is not configured).")
-        return self.llm
-
-    def search(self, query: str, limit: int = 8, with_reference: bool | None = None,
-               category: str | None = None) -> list[dict]:
-        limit = max(1, min(limit, 25))
-        hits = self.index.search(query, self.embedder, limit=limit,
+    def search(self, query: str = "", image: str | None = None, limit: int = 8,
+               with_reference: bool | None = None, category: str | None = None,
+               write_preview: bool = True) -> SearchResult:
+        limit = max(1, min(limit, 24))
+        img = read_image(image) if image else None
+        hits = self.index.search(self.embedder, query=query, image=img, limit=limit,
                                  with_reference=with_reference, category=category)
-        return [hit_to_dict(h) for h in hits]
+        res = SearchResult(query, img, [hit_to_dict(h, n) for n, h in enumerate(hits, 1)])
+        if write_preview and self.results_dir is not None and res.results:
+            from .preview import render
+            prompts = {r["id"]: self.full_prompt(r["id"]) for r in res.results}
+            res.preview_path = render(res.results, prompts, query, img,
+                                      self.cache_dir or Path("."), self.results_dir)
+        return res
 
-    def search_by_image(self, image: str, limit: int = 8, with_reference: bool | None = None,
-                        category: str | None = None, extra: str = "") -> dict:
-        img = read_image(image)
-        described = self._need_llm().describe_image(img.data, img.mime_type)
-        query = described.get("search_query") or described.get("style_description", "")
-        if extra.strip():
-            query = f"{query}. {extra.strip()}"
-        return {
-            "style_description": described.get("style_description", ""),
-            "search_query": query,
-            "results": self.search(query, limit, with_reference, category),
-        }
+    def thumbnails(self, results: list[dict]) -> list[tuple[int, bytes]]:
+        out = []
+        if self.cache_dir is None:
+            return out
+        for r in results:
+            p = cache_path(self.cache_dir, r["id"])
+            if p.exists():
+                out.append((r["n"], thumbnail(p)))
+        return out
+
+    def full_prompt(self, prompt_id: str) -> str:
+        r = self.index.get(prompt_id)
+        if r is None:
+            raise ValueError(f"No prompt with id {prompt_id}")
+        return fill_placeholders(r.prompt)
 
     def get_prompt(self, prompt_id: str) -> dict:
         r = self.index.get(prompt_id)
@@ -71,7 +117,9 @@ class PromptScout:
         r = self.index.get(prompt_id)
         if r is None:
             raise ValueError(f"No prompt with id {prompt_id}")
-        out = self._need_llm().adapt(r, wish)
+        if self.llm is None:
+            raise RuntimeError("This tool needs GEMINI_API_KEY (LLM is not configured).")
+        out = self.llm.adapt(r, wish)
         return {
             "source_id": r.id,
             "source_title": r.title,
