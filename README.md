@@ -38,7 +38,7 @@ export GEMINI_API_KEY=...
 
 prompt-scout fetch                 # download the library (~60 MB JSON) to ~/.prompt-scout
 prompt-scout index --limit 300     # cheap trial run
-prompt-scout index                 # full index: ~15k prompts, roughly 5M tokens, well under $1
+prompt-scout index                 # full index: ~15k prompts, ~5.7M tokens, about $1
 prompt-scout search "фото в стиле 90-х, вспышка" --with-reference yes
 
 claude mcp add prompt-scout -e GEMINI_API_KEY=$GEMINI_API_KEY -- prompt-scout serve
