@@ -55,7 +55,7 @@ class GeminiEmbedder:
     def _config(self, task_type: str | None):
         from google.genai import types
         # gemini-embedding-001 uses task types; gemini-embedding-2 does not take them.
-        use_task = task_type if self.model.startswith("gemini-embedding-001") else None
+        use_task = task_type if self._is_v1 else None
         return types.EmbedContentConfig(task_type=use_task, output_dimensionality=self.dim)
 
     def _call(self, contents: list, task_type: str | None) -> list[list[float]]:
@@ -73,11 +73,32 @@ class GeminiEmbedder:
                 time.sleep(min(60, 2 ** attempt * 2))
         raise AssertionError("unreachable")
 
+    @property
+    def _is_v1(self) -> bool:
+        return self.model.startswith("gemini-embedding-001")
+
+    def _prefix(self, text: str, query: bool) -> str:
+        # gemini-embedding-2 takes the retrieval task as a text prefix instead of task_type
+        if self._is_v1:
+            return text
+        if query:
+            return f"task: search result | query: {text}"
+        title, _, body = text.partition("\n")
+        return f"title: {title or 'none'} | text: {body or title}"
+
     def embed_texts(self, texts: Sequence[str], query: bool = False) -> np.ndarray:
+        from google.genai import types
+
         task = "RETRIEVAL_QUERY" if query else "RETRIEVAL_DOCUMENT"
         out: list[list[float]] = []
         for i in range(0, len(texts), self.text_batch):
-            out.extend(self._call(list(texts[i:i + self.text_batch]), task))
+            batch = [self._prefix(t, query) for t in texts[i:i + self.text_batch]]
+            if self._is_v1:
+                contents = batch  # v1 returns one vector per string
+            else:
+                # v2 merges a plain list into ONE vector; separate Content objects -> separate vectors
+                contents = [types.Content(parts=[types.Part.from_text(text=t)]) for t in batch]
+            out.extend(self._call(contents, task))
         return l2_normalize(np.asarray(out, dtype=np.float32).reshape(len(texts), -1))
 
     def embed_images(self, images: Sequence[bytes]) -> np.ndarray:

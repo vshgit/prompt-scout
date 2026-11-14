@@ -19,7 +19,10 @@ class FakeModels:
         if self.fail_first:
             self.fail_first -= 1
             raise RuntimeError("429 RESOURCE_EXHAUSTED")
-        n = 1 if self.merge else len(contents)
+        # Like the real API: gemini-embedding-2 merges plain strings into ONE vector,
+        # separate Content objects get separate vectors.
+        plain = all(isinstance(c, str) for c in contents)
+        n = 1 if self.merge or (plain and model == "gemini-embedding-2") else len(contents)
         vals = [[3.0, 4.0] + [0.0] * (config.output_dimensionality - 2)] * n
         return SimpleNamespace(embeddings=[SimpleNamespace(values=v) for v in vals])
 
@@ -32,12 +35,27 @@ def client(**kw):
     return SimpleNamespace(models=FakeModels(**kw))
 
 
-def test_texts_batched_normalized_no_task_type_for_v2():
+def test_v2_texts_one_vector_each_with_prefixes():
     c = client()
-    m = GeminiEmbedder(model="gemini-embedding-2", dim=8, text_batch=2, client=c).embed_texts(["a", "b", "c"])
+    m = GeminiEmbedder(model="gemini-embedding-2", dim=8, text_batch=2, client=c).embed_texts(
+        ["Film portrait\nwarm light", "b", "c"])
     assert m.shape == (3, 8) and np.allclose(np.linalg.norm(m, axis=1), 1)
     assert [len(x[1]) for x in c.models.calls] == [2, 1]
-    assert c.models.calls[0][2].task_type is None
+    first = c.models.calls[0]
+    assert first[2].task_type is None
+    assert first[1][0].parts[0].text == "title: Film portrait | text: warm light"
+
+
+def test_v2_query_prefix():
+    c = client()
+    GeminiEmbedder(model="gemini-embedding-2", dim=4, client=c).embed_texts(["neon"], query=True)
+    assert c.models.calls[0][1][0].parts[0].text == "task: search result | query: neon"
+
+
+def test_v1_sends_plain_strings():
+    c = client()
+    GeminiEmbedder(model="gemini-embedding-001", dim=4, client=c).embed_texts(["a", "b"])
+    assert c.models.calls[0][1] == ["a", "b"]
 
 
 def test_task_type_kept_for_001():
