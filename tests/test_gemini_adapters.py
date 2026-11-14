@@ -7,12 +7,14 @@ import numpy as np
 import pytest
 
 from prompt_scout.embed import GeminiEmbedder, embedder_for, HashEmbedder
-from prompt_scout.llm import GeminiLLM
+from prompt_scout.llm import GeminiLLM, LLMError
 
 
 class FakeModels:
-    def __init__(self, fail_first=0, merge=False):
+    def __init__(self, fail_first=0, merge=False, gen_text=None, gen_error=False):
         self.calls, self.fail_first, self.merge = [], fail_first, merge
+        self.gen_text = gen_text if gen_text is not None else json.dumps({"adapted_prompt": "p", "removed": ["woman"]})
+        self.gen_error = gen_error
 
     def embed_content(self, model, contents, config):
         self.calls.append((model, contents, config))
@@ -28,7 +30,10 @@ class FakeModels:
 
     def generate_content(self, model, contents, config):
         self.calls.append((model, contents, config))
-        return SimpleNamespace(text=json.dumps({"adapted_prompt": "p", "changes": []}))
+        if self.gen_error:
+            raise RuntimeError("404 NOT_FOUND models/x")
+        return SimpleNamespace(text=self.gen_text, candidates=[SimpleNamespace(finish_reason="SAFETY")],
+                               prompt_feedback=None)
 
 
 def client(**kw):
@@ -85,11 +90,23 @@ def test_retries_rate_limit(monkeypatch):
     assert len(c.models.calls) == 3
 
 
-def test_llm_adapt_json_mode(records):
+def test_llm_adapt_structured_output():
     c = client()
-    out = GeminiLLM(model="m", client=c).adapt(records[0], "")
-    assert out["adapted_prompt"] == "p"
-    assert c.models.calls[0][2].response_mime_type == "application/json"
+    out = GeminiLLM(model="m", client=c).adapt("A young woman", keep="pink hair")
+    assert out["adapted_prompt"] == "p" and out["removed"] == ["woman"] and out["kept_as_style"] == []
+    _, contents, config = c.models.calls[0]
+    assert config.response_mime_type == "application/json" and config.response_schema is not None
+    assert "pink hair" in contents
+
+
+@pytest.mark.parametrize("kw, text", [
+    ({"gen_error": True}, "request failed"),
+    ({"gen_text": ""}, "no text"),
+    ({"gen_text": "not json"}, "malformed"),
+])
+def test_llm_errors_are_readable(kw, text):
+    with pytest.raises(LLMError, match=text):
+        GeminiLLM(model="m", client=client(**kw)).adapt("x")
 
 
 def test_embedder_for_restores_from_index_name():

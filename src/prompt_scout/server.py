@@ -34,7 +34,9 @@ server = MCPServer(
         "by example photo, or both. Results come back numbered (n=1..N) with thumbnails, and an HTML page "
         "with the same numbered cards opens for the user. Workflow: search_prompts -> show the user a short "
         "numbered list (number, title, one line on why it fits) -> the user picks a number -> get_prompt or "
-        "adapt_prompt with that result's id. Queries can be in any language. "
+        "adapt_prompt with that result's id. adapt_prompt is the default next step: it makes the prompt "
+        "identity-neutral for selfie generation. If a tool fails, show the user the error text; do not "
+        "silently do the tool's job yourself. Queries can be in any language. "
         "Results are CC BY 4.0: keep source_url when reusing a prompt."
     ),
 )
@@ -46,8 +48,10 @@ def _friendly(fn):
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
-        except (ValueError, RuntimeError, FileNotFoundError) as exc:
-            raise ToolError(str(exc)) from exc
+        except ToolError:
+            raise
+        except Exception as exc:  # local tool: show the real reason instead of a generic failure
+            raise ToolError(f"{type(exc).__name__}: {exc}") from exc
     return wrapper
 
 
@@ -107,10 +111,18 @@ def get_prompt(prompt_id: str) -> dict:
 
 @server.tool()
 @_friendly
-def adapt_prompt(prompt_id: str, wish: str = "") -> dict:
-    """Rewrite a found prompt for a selfie-based service: identity comes from the user's photo,
-    the look is kept, and an optional wish ("green eyes, unicorn horn") is merged into one coherent prompt."""
-    return scout().adapt(prompt_id, wish)
+def adapt_prompt(prompt_id: str = "", wish: str = "", keep: str = "", prompt_text: str = "") -> dict:
+    """Make a prompt identity-neutral for a selfie service (ImagineMe default): gender, age, ethnicity,
+    face, body and natural hair are removed so they come from the user's reference photos; the look stays.
+    Appearance details that are part of the style (pink hair, character make-up) are kept and listed in
+    kept_as_style; doubtful ones are removed and listed in removed.
+
+    prompt_id: a library result id. Or prompt_text: any prompt (e.g. one of the user's own styles).
+    keep: details to keep despite neutralizing, e.g. "pink hair, freckles".
+    wish: extra edits merged into one coherent prompt, e.g. "horizontal 16:9, green instead of yellow".
+    Show the user adapted_prompt in full, then removed / kept_as_style / changes / warnings briefly.
+    """
+    return scout().adapt(prompt_id, wish=wish, keep=keep, prompt_text=prompt_text)
 
 
 @server.tool()

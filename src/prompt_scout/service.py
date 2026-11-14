@@ -111,23 +111,21 @@ class PromptScout:
         d["prompt"] = fill_placeholders(r.prompt)
         return d
 
-    def adapt(self, prompt_id: str, wish: str = "") -> dict:
-        r = self.index.get(prompt_id)
-        if r is None:
-            raise ValueError(f"No prompt with id {prompt_id}")
+    def adapt(self, prompt_id: str = "", wish: str = "", keep: str = "", prompt_text: str = "") -> dict:
+        """Identity-neutral version of a library prompt (by id) or of any prompt text."""
         if self.llm is None:
             raise RuntimeError("This tool needs GEMINI_API_KEY (LLM is not configured).")
-        out = self.llm.adapt(r, wish)
-        return {
-            "source_id": r.id,
-            "source_title": r.title,
-            "source_url": r.source_url,
-            "license": r.license,
-            "adapted_prompt": out.get("adapted_prompt", ""),
-            "changes": out.get("changes", []),
-            "extra_references": out.get("extra_references", []),
-            "warnings": out.get("warnings", []),
-        }
+        if prompt_text.strip():
+            source, needs_ref, meta = prompt_text, False, {"source_id": None, "source_title": None,
+                                                          "source_url": None, "license": None}
+        else:
+            r = self.index.get(prompt_id)
+            if r is None:
+                raise ValueError(f"No prompt with id {prompt_id!r}. Give prompt_id or prompt_text.")
+            source, needs_ref = r.prompt, r.needs_reference
+            meta = {"source_id": r.id, "source_title": r.title, "source_url": r.source_url, "license": r.license}
+        out = self.llm.adapt(source, wish=wish, keep=keep, needs_reference=needs_ref)
+        return {**meta, **out}
 
     def categories(self) -> dict[str, int]:
         counts: dict[str, int] = {}

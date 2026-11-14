@@ -8,10 +8,10 @@ class FakeLLM:
     def __init__(self):
         self.calls = []
 
-    def adapt(self, record, wish):
-        self.calls.append((record.id, wish))
-        return {"adapted_prompt": "Keep the person from reference image 1 ...", "changes": ["убрано описание лица"],
-                "extra_references": [], "warnings": []}
+    def adapt(self, prompt, wish="", keep="", needs_reference=False):
+        self.calls.append((prompt, wish, keep, needs_reference))
+        return {"adapted_prompt": "The person from the reference photos ...", "removed": ["woman"],
+                "kept_as_style": [], "changes": [], "extra_references": [], "warnings": []}
 
 
 @pytest.fixture
@@ -57,10 +57,22 @@ def test_rejects_non_image(scout, tmp_path):
         scout.search(image=str(tmp_path / "missing.png"))
 
 
-def test_adapt_passes_wish_and_attribution(scout):
-    out = scout.adapt("1", "зелёные глаза")
-    assert scout.llm.calls == [("1", "зелёные глаза")]
+def test_adapt_library_prompt_passes_wish_keep_and_attribution(scout):
+    out = scout.adapt("1", wish="horizontal", keep="pink hair")
+    prompt, wish, keep, needs_ref = scout.llm.calls[0]
+    assert "Kodak Portra" in prompt and (wish, keep, needs_ref) == ("horizontal", "pink hair", True)
     assert out["source_url"].endswith("id=1") and "CC BY" in out["license"]
+    assert out["removed"] == ["woman"]
+
+
+def test_adapt_own_prompt_text(scout):
+    out = scout.adapt(prompt_text="A young woman with long dark hair, film flash")
+    assert scout.llm.calls[0][0].startswith("A young woman") and out["source_id"] is None
+
+
+def test_adapt_needs_id_or_text(scout):
+    with pytest.raises(ValueError):
+        scout.adapt()
 
 
 def test_adapt_needs_llm(real_image_env, img_embedder):
@@ -74,6 +86,6 @@ def test_unknown_id(scout):
         scout.get_prompt("999")
 
 
-def test_adapt_message_fills_placeholders(records):
-    msg = adapt_user_message(records[0], "")
-    assert "the woman from image 1" in msg and "(none)" in msg
+def test_adapt_message_fills_placeholders_and_marks_empty(records):
+    msg = adapt_user_message(records[0].prompt)
+    assert "the woman from image 1" in msg and "(none)" in msg and "(nothing)" in msg
