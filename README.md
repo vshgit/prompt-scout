@@ -52,6 +52,8 @@ This is retrieval-augmented generation: `adapt_prompt` generates from a retrieve
 ## Quick start
 
 ```bash
+python3 -m venv ~/.prompt-scout-venv && source ~/.prompt-scout-venv/bin/activate
+pip install --upgrade pip
 pip install git+https://github.com/vshgit/prompt-scout
 export GEMINI_API_KEY=...
 
@@ -62,8 +64,11 @@ prompt-scout index                 # downloads sample images, embeds texts and i
 prompt-scout search "голливудский портрет со вспышкой" --open
 prompt-scout search --image ~/Downloads/look.jpg --open
 
-claude mcp add prompt-scout -e GEMINI_API_KEY=$GEMINI_API_KEY -- prompt-scout serve
+claude mcp add prompt-scout -e GEMINI_API_KEY=$GEMINI_API_KEY -- ~/.prompt-scout-venv/bin/prompt-scout serve
 ```
+
+On Intel Macs the `cryptography` dependency is pinned below 49 (newer versions have no prebuilt wheels
+there and would need a Rust toolchain).
 
 Cost with Gemini Embedding 2 paid tier: portraits only (~2,200 prompts) ≈ $0.45; the whole library
 (~15,300 prompts) ≈ $3. Each search embeds one short query (fractions of a cent).
