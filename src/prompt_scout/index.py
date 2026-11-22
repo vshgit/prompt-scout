@@ -148,17 +148,21 @@ class Index:
         scores = np.where(mask & (scores > 0), scores, -np.inf)  # no similarity = not a match
         return [int(i) for i in np.argsort(-scores)[:pool] if np.isfinite(scores[i])]
 
-    def search(self, embedder: Embedder, query: str = "", image: bytes | None = None,
-               limit: int = 8, with_reference: bool | None = None, category: str | None = None,
-               pool: int = 100) -> list[Hit]:
-        """query: text in any language; image: JPEG/PNG bytes of an example. Either or both."""
+    def ranked_lists(self, embedder: Embedder, query: str = "", image: bytes | None = None,
+                     with_reference: bool | None = None, category: str | None = None,
+                     pool: int = 100) -> dict[str, list[int]]:
+        """The ranked lists (record positions, best first), one per signal, before fusion.
+
+        Kept separate from fusion so that evaluation can embed a query once and then
+        re-fuse the same lists with other weights or with signals switched off.
+        """
         if embedder.name != self.embedder_name:
             raise ValueError(f"index built with {self.embedder_name}, query embedder is {embedder.name}")
         if not query.strip() and image is None:
             raise ValueError("Give a text query, an image, or both.")
         mask = self._mask(with_reference, category)
         if not mask.any():
-            return []
+            return {}
 
         lists: dict[str, list[int]] = {}
         query_vectors = []
@@ -174,14 +178,29 @@ class Index:
             if q_tokens:
                 kw = self._bm25.get_scores(q_tokens)
                 lists["text->keywords"] = self._ranked(kw, mask, pool)
+        return lists
 
+    def fuse(self, lists: dict[str, list[int]], limit: int = 8,
+             weights: dict[str, float] | None = None) -> list[Hit]:
+        """Weighted Reciprocal Rank Fusion. A list with weight 0 is switched off."""
+        weights = WEIGHTS if weights is None else weights
         fused: dict[int, Hit] = {}
         for name, order in lists.items():
+            w = weights.get(name, 1.0)
+            if w <= 0:
+                continue
             for rank, i in enumerate(order):
                 hit = fused.setdefault(i, Hit(self.records[i], 0.0))
-                hit.score += WEIGHTS.get(name, 1.0) / (RRF_K + rank + 1)
+                hit.score += w / (RRF_K + rank + 1)
                 hit.ranks[name] = rank + 1
         return sorted(fused.values(), key=lambda h: -h.score)[:limit]
+
+    def search(self, embedder: Embedder, query: str = "", image: bytes | None = None,
+               limit: int = 8, with_reference: bool | None = None, category: str | None = None,
+               pool: int = 100) -> list[Hit]:
+        """query: text in any language; image: JPEG/PNG bytes of an example. Either or both."""
+        lists = self.ranked_lists(embedder, query, image, with_reference, category, pool)
+        return self.fuse(lists, limit)
 
     def get(self, prompt_id: str) -> Record | None:
         i = self.by_id.get(str(prompt_id))

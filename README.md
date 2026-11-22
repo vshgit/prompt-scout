@@ -92,6 +92,37 @@ After editing, run `prompt-scout index` again. Indexing is incremental: unchange
 their vectors; only new or edited ones are embedded. The library itself updates twice a day upstream
 (`prompt-scout fetch`).
 
+## Search quality
+
+Search is evaluated on a labelled query set instead of by eye: `evals/queries.jsonl` holds 26 queries
+(English and Russian) with 3–10 correct library ids each. One command prints Recall@10, MRR@10, nDCG@10 and
+Hit@10 for the full hybrid, for each of the five signals switched off in turn, for dense-only search
+(no BM25) and for each signal alone:
+
+```bash
+python -m evals.run                              # needs the index and GEMINI_API_KEY
+python -m evals.run --report evals/REPORT.md     # also writes the tables into the report
+python -m evals.run --tune                       # grid search over RRF weights, with a leave-one-out check
+```
+
+Labels are checked on a local page (`python -m evals.review`) that shows each query's labelled ids next to
+the hybrid top 10 and each signal's top 5, with sample images, so missing correct answers get added.
+Queries are embedded once and re-fused for every variant, so the ablation costs no extra API calls.
+Current results (26 text queries, labels reviewed by hand, Nov 2026):
+
+| | Recall@10 | MRR@10 | nDCG@10 |
+|---|---:|---:|---:|
+| Hybrid (5 signals, weighted RRF) | 0.74 | 0.82 | 0.70 |
+| Dense only (no BM25) | 0.68 | 0.81 | 0.67 |
+| Best single signal (text ↔ prompts) | 0.67 | 0.82 | 0.67 |
+
+Every signal switched off lowers nDCG@10; the hybrid gains +0.06 Recall@10 over dense only
+(95% bootstrap CI +0.01 … +0.11). Tuning the RRF weights did not beat the defaults under leave-one-out.
+Photo queries are not in the set yet.
+
+Method, results and caveats (sparse labels, small set) are in [`evals/REPORT.md`](evals/REPORT.md).
+The metric code is unit-tested without network (`tests/test_evals.py`).
+
 ## Design decisions
 
 - **No vector database.** Thousands of 768-dim vectors are tens of MB; exact search in numpy takes
