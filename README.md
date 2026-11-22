@@ -108,19 +108,20 @@ python -m evals.review                           # labelling page: check and ext
 ```
 
 Labels are checked on a local page (`python -m evals.review`) that shows each query's labelled ids next to
-the hybrid top 10 and each signal's top 5, with sample images, so missing correct answers get added.
+the hybrid top 10 and each signal's top 10, with sample images, so missing correct answers get added.
 Queries are embedded once and re-fused for every variant, so the ablation costs no extra API calls.
-Current results (26 text queries, labels reviewed by hand, Nov 2026):
+Current results (32 queries: 26 text in English and Russian, 4 photo, 2 photo + text; labels reviewed by hand, Nov 2026):
 
 | | Recall@10 | MRR@10 | nDCG@10 |
 |---|---:|---:|---:|
-| Hybrid (5 signals, weighted RRF) | 0.74 | 0.82 | 0.70 |
-| Dense only (no BM25) | 0.68 | 0.81 | 0.67 |
-| Best single signal (text ↔ prompts) | 0.67 | 0.82 | 0.67 |
+| Hybrid (5 signals, weighted RRF) | 0.78 | 0.85 | 0.73 |
+| Dense only (no BM25) | 0.74 | 0.85 | 0.70 |
 
-Every signal switched off lowers nDCG@10; the hybrid gains +0.06 Recall@10 over dense only
-(95% bootstrap CI +0.01 … +0.11). Tuning the RRF weights did not beat the defaults under leave-one-out.
-Photo queries are not in the set yet.
+Switching off any of the five signals lowers nDCG@10; on the 26 text queries the best single signal
+(text ↔ prompts) reaches nDCG@10 0.67 against 0.70 for the hybrid. The hybrid gains +0.045 Recall@10 over dense only
+(95% bootstrap CI +0.008 … +0.090). On the 6 photo queries both photo signals matter: either one alone reaches nDCG@10 ≈ 0.33 against
+0.86 for the hybrid. The default RRF weights were the best of 1,023 combinations, and tuning did not beat them
+under leave-one-out.
 
 Method, results and caveats (sparse labels, small set) are in [`evals/REPORT.md`](evals/REPORT.md).
 The metric code is unit-tested without network (`tests/test_evals.py`).

@@ -99,7 +99,7 @@ def test_shipped_query_file_is_valid():
     import evals
     qs, p = parse((Path(evals.__file__).parent / "queries.jsonl").read_text("utf-8").splitlines())
     assert not p.errors and not p.warnings
-    assert 25 <= len(qs) <= 30
+    assert len(qs) >= 25 and all(q.status == "verified" and q.relevant for q in qs)
 
 
 # ---------- fusion split and ablation ----------
@@ -184,6 +184,7 @@ def test_main_end_to_end_and_report_keeps_hand_written_text(index, tmp_path, cap
     text = report.read_text("utf-8")
     assert text.startswith("# Mine") and "My conclusions." in text and "old\n" not in text
     assert "Ablation" in text
+    assert "photo and mixed queries only (n = 1)" in out
     assert set(json.loads((tmp_path / "out.json").read_text())) >= {evals_run.HYBRID, evals_run.DENSE}
 
 
