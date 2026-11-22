@@ -139,6 +139,15 @@ def build_report(index: Index, queries: list[Query], per: dict, dropped: list[st
     if dropped:
         out += [f"Labelled ids missing from this index (ignored): {', '.join(dropped)}.", ""]
     out += ["### Ablation (all queries)", "", table(overall, HYBRID), ""]
+    photo_q = [q for q in qids if by_id[q].image]
+    if photo_q and len(photo_q) < len(qids):
+        # photo signals exist only for queries with a photo: averaged over all queries their rows look tiny
+        rows = {n: mean_scores([per[n][q] for q in photo_q]) for n in per
+                if n == HYBRID or "photo" in n or n.startswith("− ")}
+        out += [f"### Ablation, photo and mixed queries only (n = {len(photo_q)})", "",
+                "Text queries have no photo lists, so the photo rows of the table above average in zeros; "
+                "this table compares on the queries where photo signals exist.", "",
+                table(rows, HYBRID), ""]
 
     for title, key in (("language", lambda q: q.lang), ("query type", lambda q: q.kind)):
         groups = sorted({key(by_id[q]) for q in qids})

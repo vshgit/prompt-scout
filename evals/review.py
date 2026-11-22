@@ -3,7 +3,7 @@
     python -m evals.review            # writes evals/review.html and opens it
 
 For every query the page shows a pool of candidates with their sample images:
-the ids already labelled (pre-checked), the hybrid top 10, and the top 5 of each
+the ids already labelled (pre-checked), the hybrid top 10, and the top 10 of each
 signal on its own. Pooling the output of several systems (as TREC does) keeps the
 labels from favouring one signal. Tick what really fits, mark the query as checked,
 and press "Download queries.jsonl": the file has the same rows with the new
@@ -25,7 +25,7 @@ from prompt_scout.index import Index
 from .queries import MAX_RELEVANT, MIN_RELEVANT, load
 from .run import NAMES, SIGNALS
 
-TOP_HYBRID, TOP_SIGNAL = 10, 5
+TOP_HYBRID, TOP_SIGNAL = 10, 10  # equal depth, so the pool does not favour the hybrid
 
 
 def pool_for(index: Index, lists: dict[str, list[int]], labelled: list[str]) -> list[tuple[str, list[str]]]:
