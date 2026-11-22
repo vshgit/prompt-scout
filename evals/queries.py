@@ -5,7 +5,7 @@ One JSON object per line:
   lang      "en" | "ru"  (language of the text part; free label, used for the breakdown)
   text      text query, may be empty for a photo-only query
   image     path or URL of an example photo, or null
-  relevant  3-5 library ids that are correct answers (strings)
+  relevant  3-10 library ids that are correct answers (strings)
   status    "draft" (labelled from the prompt text only) | "verified" (checked by the owner)
   note      optional free text
 """
@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-MIN_RELEVANT, MAX_RELEVANT = 3, 5
+MIN_RELEVANT, MAX_RELEVANT = 3, 10  # 5 at first; review can add more that truly fit
 
 
 @dataclass

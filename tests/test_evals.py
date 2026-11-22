@@ -91,7 +91,7 @@ def test_parse_duplicate_id_and_label_count_warning():
     qs, p = parse([_line(), _line()])
     assert len(qs) == 1 and any("duplicate" in e for e in p.errors)
     _, p = parse([_line(relevant=["1", "2"])])
-    assert any("expected 3-5" in w for w in p.warnings)
+    assert any("expected 3-10" in w for w in p.warnings)
 
 
 def test_shipped_query_file_is_valid():
@@ -207,3 +207,27 @@ def test_main_skips_query_whose_labels_are_all_missing(index, tmp_path, capsys):
                            {"id": "b", "text": "neon", "relevant": ["777", "888", "999"]}])
     assert evals_run.main(["--queries", str(qfile), "--index", str(tmp_path / "idx")]) == 0
     assert "b skipped" in capsys.readouterr().err
+
+
+# ---------- labelling page ----------
+def test_review_pool_has_labelled_first_and_every_signal(index, embedder):
+    from evals.review import pool_for
+    lists = index.ranked_lists(embedder, "neon cyberpunk night", image=b"wave fuji")
+    pool = pool_for(index, lists, ["5", "missing-id"])
+    assert pool[0] == ("5", ["labelled"])            # labelled first, unknown ids dropped
+    reasons = " ".join(r for _, why in pool for r in why)
+    assert "hybrid #1" in reasons and "BM25 #1" in reasons and "photo↔images #1" in reasons
+    assert len({rid for rid, _ in pool}) == len(pool)  # each id once
+
+
+def test_review_page_is_written(index, tmp_path, capsys):
+    from evals import review
+    index.save(tmp_path / "idx")
+    qfile = tmp_path / "q.jsonl"
+    _write_queries(qfile, [{"id": "a", "text": "neon </script>", "relevant": ["2", "1", "3"]}])
+    out = tmp_path / "r.html"
+    assert review.main(["--queries", str(qfile), "--index", str(tmp_path / "idx"),
+                        "--images", str(tmp_path), "--out", str(out), "--no-open"]) == 0
+    page = out.read_text("utf-8")
+    assert "Скачать queries.jsonl" in page and "</script>\"" not in page and "__DATA__" not in page
+    assert '"checked": true' in page

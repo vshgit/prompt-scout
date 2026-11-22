@@ -95,7 +95,7 @@ their vectors; only new or edited ones are embedded. The library itself updates 
 ## Search quality
 
 Search is evaluated on a labelled query set instead of by eye: `evals/queries.jsonl` holds 26 queries
-(English and Russian) with 5 correct library ids each. One command prints Recall@10, MRR@10, nDCG@10 and
+(English and Russian) with 3–10 correct library ids each. One command prints Recall@10, MRR@10, nDCG@10 and
 Hit@10 for the full hybrid, for each of the five signals switched off in turn, for dense-only search
 (no BM25) and for each signal alone:
 
@@ -105,6 +105,8 @@ python -m evals.run --report evals/REPORT.md     # also writes the tables into t
 python -m evals.run --tune                       # grid search over RRF weights, with a leave-one-out check
 ```
 
+Labels are checked on a local page (`python -m evals.review`) that shows each query's labelled ids next to
+the hybrid top 10 and each signal's top 5, with sample images, so missing correct answers get added.
 Queries are embedded once and re-fused for every variant, so the ablation costs no extra API calls.
 Method, results and caveats (sparse labels, small set) are in [`evals/REPORT.md`](evals/REPORT.md).
 The metric code is unit-tested without network (`tests/test_evals.py`).
