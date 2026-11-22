@@ -5,7 +5,7 @@ One JSON object per line:
   lang      "en" | "ru"  (language of the text part; free label, used for the breakdown)
   text      text query, may be empty for a photo-only query
   image     path or URL of an example photo, or null
-  relevant  3-10 library ids that are correct answers (strings)
+  relevant  3-10 library ids that are correct answers (strings); may be empty while status is draft
   status    "draft" (labelled from the prompt text only) | "verified" (checked by the owner)
   note      optional free text
 """
@@ -68,8 +68,14 @@ def parse(lines: list[str]) -> tuple[list[Query], Problems]:
         if not text.strip() and not image:
             problems.errors.append(f"{where}: needs text, image, or both")
             continue
+        status = str(raw.get("status", "draft"))
         if not relevant:
-            problems.errors.append(f"{where}: no relevant ids")
+            if status == "verified":
+                problems.errors.append(f"{where}: no relevant ids")
+            else:  # a new query waiting for the labelling page: kept, skipped by the runner
+                problems.warnings.append(f"{where}: not labelled yet")
+                queries.append(Query(qid, text, image, [], str(raw.get("lang", "en")), status,
+                                     str(raw.get("note", ""))))
             continue
         if len(set(relevant)) != len(relevant):
             problems.errors.append(f"{where}: repeated ids in relevant")
@@ -77,7 +83,7 @@ def parse(lines: list[str]) -> tuple[list[Query], Problems]:
         if not MIN_RELEVANT <= len(relevant) <= MAX_RELEVANT:
             problems.warnings.append(f"{where}: {len(relevant)} relevant ids (expected {MIN_RELEVANT}-{MAX_RELEVANT})")
         queries.append(Query(qid, text, image, relevant, str(raw.get("lang", "en")),
-                             str(raw.get("status", "draft")), str(raw.get("note", ""))))
+                             status, str(raw.get("note", ""))))
     return queries, problems
 
 

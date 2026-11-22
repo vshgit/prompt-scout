@@ -66,6 +66,7 @@ label.done{font-size:14px;cursor:pointer}
 .c .t{font-weight:600}.c .why{color:var(--muted);font-size:11px}
 .c details{font-size:12px;color:var(--muted)}.c details p{white-space:pre-wrap;max-height:220px;overflow:auto;margin:4px 0}
 .c .tick{font-weight:700;color:var(--ok)}
+.qimg{display:flex;gap:12px;align-items:center;margin-top:8px}.qimg img{width:120px;height:150px;object-fit:cover;border-radius:10px;border:3px solid var(--ink)}
 </style>
 <div class="bar"><button id="dl">Скачать queries.jsonl</button>
 <span id="progress" class="muted"></span>
@@ -97,7 +98,7 @@ function render() {
     sec.innerHTML = `<div class="qhead"><h2>${esc(q.query.id)} · ${esc(q.query.text || "(фото)")}</h2>
       <span class="count ${okN ? "good" : "bad"}">отмечено ${n}</span>
       <label class="done"><input type="checkbox" ${q.done ? "checked" : ""}> проверено</label></div>
-      ${q.query.image ? `<div class="muted">фото: ${esc(q.query.image)}</div>` : ""}
+      ${q.query.image ? `<div class="qimg"><img src="${esc(q.query.imageSrc)}" alt=""><span class="muted">фото-запрос: ${esc(q.query.image)}</span></div>` : ""}
       <div class="grid"></div>`;
     sec.querySelector(".done input").onchange = e => { q.done = e.target.checked; save(); render(); };
     const grid = sec.querySelector(".grid");
@@ -118,7 +119,7 @@ function render() {
 }
 document.getElementById("dl").onclick = () => {
   const lines = DATA.map(q => {
-    const row = {...q.query};
+    const row = {...q.query}; delete row.imageSrc;
     if (q.done) { row.relevant = q.cards.filter(c => c.checked).map(c => c.id); row.status = "verified"; }
     return JSON.stringify(row);
   });
@@ -143,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     from prompt_scout.service import read_image
 
     queries, problems = load(args.queries)
+    for w in problems.warnings:
+        print(f"note: {w}", file=sys.stderr)
     if problems.errors:
         print("Query file has errors:\n  " + "\n  ".join(problems.errors), file=sys.stderr)
         return 2
@@ -154,7 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     for q in queries:
         lists = index.ranked_lists(embedder, q.text, read_image(q.image) if q.image else None)
         cards = [card(index, rid, why, rid in q.relevant, cache) for rid, why in pool_for(index, lists, q.relevant)]
-        data.append({"query": asdict(q), "done": q.status == "verified", "cards": cards})
+        query = asdict(q)
+        if q.image and not q.image.startswith(("http://", "https://")):
+            query["imageSrc"] = Path(q.image).expanduser().resolve().as_uri()
+        else:
+            query["imageSrc"] = q.image or ""
+        data.append({"query": query, "done": q.status == "verified", "cards": cards})
 
     page = (PAGE.replace("__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
             .replace("__MIN__", str(MIN_RELEVANT)).replace("__MAX__", str(MAX_RELEVANT)))

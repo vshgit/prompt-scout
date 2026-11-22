@@ -103,6 +103,8 @@ Hit@10 for the full hybrid, for each of the five signals switched off in turn, f
 python -m evals.run                              # needs the index and GEMINI_API_KEY
 python -m evals.run --report evals/REPORT.md     # also writes the tables into the report
 python -m evals.run --tune                       # grid search over RRF weights, with a leave-one-out check
+python -m evals.add --image URL [--text ...]     # add a photo / mixed / text query as an unlabelled draft
+python -m evals.review                           # labelling page: check and extend the answers
 ```
 
 Labels are checked on a local page (`python -m evals.review`) that shows each query's labelled ids next to
