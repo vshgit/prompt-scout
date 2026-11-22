@@ -92,6 +92,23 @@ After editing, run `prompt-scout index` again. Indexing is incremental: unchange
 their vectors; only new or edited ones are embedded. The library itself updates twice a day upstream
 (`prompt-scout fetch`).
 
+## Search quality
+
+Search is evaluated on a labelled query set instead of by eye: `evals/queries.jsonl` holds 26 queries
+(English and Russian) with 5 correct library ids each. One command prints Recall@10, MRR@10, nDCG@10 and
+Hit@10 for the full hybrid, for each of the five signals switched off in turn, for dense-only search
+(no BM25) and for each signal alone:
+
+```bash
+python -m evals.run                              # needs the index and GEMINI_API_KEY
+python -m evals.run --report evals/REPORT.md     # also writes the tables into the report
+python -m evals.run --tune                       # grid search over RRF weights, with a leave-one-out check
+```
+
+Queries are embedded once and re-fused for every variant, so the ablation costs no extra API calls.
+Method, results and caveats (sparse labels, small set) are in [`evals/REPORT.md`](evals/REPORT.md).
+The metric code is unit-tested without network (`tests/test_evals.py`).
+
 ## Design decisions
 
 - **No vector database.** Thousands of 768-dim vectors are tens of MB; exact search in numpy takes
