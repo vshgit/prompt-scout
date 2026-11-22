@@ -79,7 +79,7 @@ def test_parse_valid_and_kinds():
     ("{not json", "not valid JSON"),
     (_line(id=""), "missing id"),
     (_line(text=""), "needs text, image, or both"),
-    (_line(relevant=[]), "no relevant ids"),
+    (_line(relevant=[], status="verified"), "no relevant ids"),
     (_line(relevant=["1", "1", "2"]), "repeated ids"),
 ])
 def test_parse_errors(line, fragment):
@@ -231,3 +231,56 @@ def test_review_page_is_written(index, tmp_path, capsys):
     page = out.read_text("utf-8")
     assert "Скачать queries.jsonl" in page and "</script>\"" not in page and "__DATA__" not in page
     assert '"checked": true' in page
+
+
+def test_draft_without_answers_is_kept_with_a_note():
+    qs, p = parse([_line(relevant=[])])
+    assert len(qs) == 1 and qs[0].relevant == [] and not p.errors
+    assert any("not labelled yet" in w for w in p.warnings)
+
+
+def test_main_skips_unlabelled_draft(index, tmp_path, capsys):
+    index.save(tmp_path / "idx")
+    qfile = tmp_path / "q.jsonl"
+    _write_queries(qfile, [{"id": "a", "text": "neon", "relevant": ["2", "1", "3"]},
+                           {"id": "b", "text": "neon", "relevant": []}])
+    assert evals_run.main(["--queries", str(qfile), "--index", str(tmp_path / "idx")]) == 0
+    assert "b skipped" in capsys.readouterr().err
+
+
+# ---------- adding queries ----------
+def test_add_appends_draft_rows_with_next_id(tmp_path, capsys):
+    from evals import add
+    qfile = tmp_path / "q.jsonl"
+    _write_queries(qfile, [{"id": "q07", "text": "a", "relevant": ["1", "2", "3"]}])  # no trailing newline
+    img = tmp_path / "p.png"
+    img.write_bytes(make_png((10, 20, 30)))
+    assert add.main(["--queries", str(qfile), "--image", str(img), "--text", "но зимой", "--lang", "ru"]) == 0
+    assert add.main(["--queries", str(qfile), "--image", str(img)]) == 0
+    rows = [json.loads(line) for line in qfile.read_text("utf-8").splitlines()]
+    assert [r["id"] for r in rows] == ["q07", "q08", "q09"]
+    assert rows[1] == {"id": "q08", "text": "но зимой", "image": str(img), "relevant": [],
+                       "lang": "ru", "status": "draft", "note": ""}
+    assert "mixed" in capsys.readouterr().out
+
+
+def test_add_refuses_a_photo_that_cannot_be_read(tmp_path):
+    from evals import add
+    qfile = tmp_path / "q.jsonl"
+    with pytest.raises(ValueError, match="File not found"):
+        add.main(["--queries", str(qfile), "--image", str(tmp_path / "nope.jpg")])
+    assert not qfile.exists()
+
+
+def test_review_page_shows_photo_query_and_strips_helper_field(index, tmp_path):
+    from evals import review
+    index.save(tmp_path / "idx")
+    img = tmp_path / "p.png"
+    img.write_bytes(make_png((230, 0, 160)))
+    qfile = tmp_path / "q.jsonl"
+    _write_queries(qfile, [{"id": "p1", "text": "", "image": str(img), "relevant": []}])
+    out = tmp_path / "r.html"
+    assert review.main(["--queries", str(qfile), "--index", str(tmp_path / "idx"),
+                        "--images", str(tmp_path), "--out", str(out), "--no-open"]) == 0
+    page = out.read_text("utf-8")
+    assert img.resolve().as_uri() in page and "delete row.imageSrc" in page
